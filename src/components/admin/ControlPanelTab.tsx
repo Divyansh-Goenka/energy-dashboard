@@ -1,3 +1,4 @@
+// File: src/components/admin/ControlPanelTab.tsx
 'use client'
 
 import { useState, useRef } from 'react'
@@ -7,6 +8,16 @@ interface ControlPanelTabProps {
     setCompanyName: (name: string) => void
     logoUrl: string
     setLogoUrl: (url: string) => void
+}
+
+interface DatabaseTestResult {
+    success: boolean
+    message: string
+    connection_time_ms?: number
+    database_info?: any
+    schema_info?: any
+    tables?: any[]
+    error_code?: string
 }
 
 export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoUrl }: ControlPanelTabProps) {
@@ -26,6 +37,11 @@ export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoU
         password: '',
         port: '1433'
     })
+
+    // Database test state
+    const [isTestingDatabase, setIsTestingDatabase] = useState(false)
+    const [dbTestResult, setDbTestResult] = useState<DatabaseTestResult | null>(null)
+    const [dbConnectionStatus, setDbConnectionStatus] = useState<'not-tested' | 'connected' | 'error'>('not-tested')
 
     // SMTP Configuration State
     const [smtpConfig, setSmtpConfig] = useState({
@@ -103,12 +119,59 @@ export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoU
         }
     }
 
-    const handleTestDatabase = () => {
-        alert('Database connection test will be implemented')
+    const handleTestDatabase = async () => {
+        // Validate required fields
+        if (!dbConfig.server || !dbConfig.database || !dbConfig.username || !dbConfig.password) {
+            alert('Please fill in all required database fields (Server, Database, Username, Password)')
+            return
+        }
+
+        setIsTestingDatabase(true)
+        setDbTestResult(null)
+        setDbConnectionStatus('not-tested')
+
+        try {
+            const response = await fetch('/api/database/test-connection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(dbConfig)
+            })
+
+            const result: DatabaseTestResult = await response.json()
+            setDbTestResult(result)
+
+            if (result.success) {
+                setDbConnectionStatus('connected')
+                alert(`✅ Database connection successful!\n\nConnection time: ${result.connection_time_ms}ms\nDatabase: ${result.database_info?.database_name}\nServer: ${result.database_info?.server_name}\nTables found: ${result.schema_info?.table_count || 0}`)
+            } else {
+                setDbConnectionStatus('error')
+                alert(`❌ Database connection failed!\n\nError: ${result.message}\n\nPlease check your connection settings and try again.`)
+            }
+
+        } catch (error) {
+            console.error('Database test error:', error)
+            setDbConnectionStatus('error')
+            setDbTestResult({
+                success: false,
+                message: 'Failed to connect to server. Please check if the application server is running.',
+                error_code: 'NETWORK_ERROR'
+            })
+            alert('❌ Network error: Could not reach the server. Please check your connection and try again.')
+        } finally {
+            setIsTestingDatabase(false)
+        }
     }
 
     const handleSaveDatabase = () => {
-        alert('Database configuration saved!')
+        if (dbConnectionStatus !== 'connected') {
+            if (window.confirm('Database connection has not been tested successfully. Do you still want to save these settings?')) {
+                alert('Database configuration saved! (Note: Connection was not verified)')
+            }
+        } else {
+            alert('Database configuration saved successfully!')
+        }
     }
 
     const handleTestEmail = () => {
@@ -121,6 +184,23 @@ export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoU
 
     const handleSaveScheduler = () => {
         alert('Scheduler configuration saved!')
+    }
+
+    // Helper function to get status color
+    const getDbStatusColor = () => {
+        switch (dbConnectionStatus) {
+            case 'connected': return 'text-green-600'
+            case 'error': return 'text-red-600'
+            default: return 'text-orange-600'
+        }
+    }
+
+    const getDbStatusText = () => {
+        switch (dbConnectionStatus) {
+            case 'connected': return 'Connected'
+            case 'error': return 'Connection Failed'
+            default: return 'Not Tested'
+        }
     }
 
     return (
@@ -242,7 +322,7 @@ export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoU
                     <h3 className="text-xl font-semibold text-gray-900 mb-4">Database Configuration</h3>
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">SQL Server Address</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">SQL Server Address *</label>
                             <input
                                 type="text"
                                 value={dbConfig.server}
@@ -253,7 +333,7 @@ export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoU
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Database Name</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Database Name *</label>
                                 <input
                                     type="text"
                                     value={dbConfig.database}
@@ -275,7 +355,7 @@ export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoU
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Username *</label>
                                 <input
                                     type="text"
                                     value={dbConfig.username}
@@ -285,7 +365,7 @@ export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoU
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Password *</label>
                                 <input
                                     type="password"
                                     value={dbConfig.password}
@@ -295,12 +375,43 @@ export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoU
                                 />
                             </div>
                         </div>
+
+                        {/* Database Test Result Display */}
+                        {dbTestResult && (
+                            <div className={`p-4 rounded-lg border ${dbTestResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                <div className="flex items-start space-x-3">
+                                    <div className={`w-2 h-2 rounded-full mt-2 ${dbTestResult.success ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                    <div className="flex-1">
+                                        <p className={`text-sm font-medium ${dbTestResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                                            {dbTestResult.message}
+                                        </p>
+                                        {dbTestResult.success && dbTestResult.database_info && (
+                                            <div className="mt-2 text-xs text-green-700">
+                                                <p>Database: {dbTestResult.database_info.database_name}</p>
+                                                <p>Server: {dbTestResult.database_info.server_name}</p>
+                                                <p>Connection time: {dbTestResult.connection_time_ms}ms</p>
+                                                {dbTestResult.schema_info && (
+                                                    <p>Tables: {dbTestResult.schema_info.table_count}</p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {!dbTestResult.success && (
+                                            <p className="mt-1 text-xs text-red-600">
+                                                Error code: {dbTestResult.error_code}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="flex space-x-3">
                             <button
                                 onClick={handleTestDatabase}
-                                className="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700 transition-colors cursor-pointer"
+                                disabled={isTestingDatabase}
+                                className={`bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${isTestingDatabase ? 'cursor-wait' : ''}`}
                             >
-                                Test Connection
+                                {isTestingDatabase ? 'Testing...' : 'Test Connection'}
                             </button>
                             <button
                                 onClick={handleSaveDatabase}
@@ -309,6 +420,7 @@ export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoU
                                 Save Configuration
                             </button>
                         </div>
+                        <p className="text-xs text-gray-500">* Required fields for database connection</p>
                     </div>
                 </div>
 
@@ -493,7 +605,9 @@ export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoU
                         </div>
                         <div className="flex justify-between items-center">
                             <span className="text-sm text-gray-600">Database Status:</span>
-                            <span className="text-sm font-medium text-orange-600">Not Connected</span>
+                            <span className={`text-sm font-medium ${getDbStatusColor()}`}>
+                                {getDbStatusText()}
+                            </span>
                         </div>
                         <div className="flex justify-between items-center">
                             <span className="text-sm text-gray-600">Email Status:</span>
@@ -503,6 +617,17 @@ export function ControlPanelTab({ companyName, setCompanyName, logoUrl, setLogoU
                             <span className="text-sm text-gray-600">Scheduler Status:</span>
                             <span className="text-sm font-medium text-gray-500">Inactive</span>
                         </div>
+                        {dbTestResult && dbTestResult.success && (
+                            <div className="border-t pt-3 mt-4">
+                                <div className="text-xs text-gray-600 space-y-1">
+                                    <p>Last connection: {new Date().toLocaleString()}</p>
+                                    <p>Response time: {dbTestResult.connection_time_ms}ms</p>
+                                    {dbTestResult.schema_info && (
+                                        <p>Tables: {dbTestResult.schema_info.table_count} | Views: {dbTestResult.schema_info.view_count}</p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                         <div className="border-t pt-3 mt-4">
                             <button className="w-full bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors cursor-pointer">
                                 Export System Configuration

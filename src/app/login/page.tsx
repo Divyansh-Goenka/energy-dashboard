@@ -1,3 +1,4 @@
+// File: src/app/login/page.tsx
 'use client'
 
 import { useState } from 'react'
@@ -32,12 +33,13 @@ export default function Login() {
     const [error, setError] = useState('')
     const router = useRouter()
 
-    // Demo authentication function (replace with real API later)
+    // Enhanced authentication function with more demo accounts
     const authenticateUser = async (email: string, password: string): Promise<AuthResponse> => {
         // Simulate API delay
         await new Promise(resolve => setTimeout(resolve, 1000))
 
-        // Demo logic - replace with real database check
+        // Demo logic - replace with real database check later
+        // Admin accounts (full access including database testing)
         if (email === 'admin@energydash.com' && password === 'admin123') {
             return {
                 success: true,
@@ -50,7 +52,23 @@ export default function Login() {
                 },
                 token: 'demo-admin-token-123'
             }
-        } else if (email === 'client@abc-corp.com' && password === 'client123') {
+        }
+        // Additional admin account for testing
+        else if (email === 'admin@company.com' && password === 'admin456') {
+            return {
+                success: true,
+                user: {
+                    id: '10',
+                    email: email,
+                    role: 'admin',
+                    name: 'Admin User',
+                    clientId: null
+                },
+                token: 'demo-admin-token-789'
+            }
+        }
+        // Client accounts (energy dashboard access only)
+        else if (email === 'client@abc-corp.com' && password === 'client123') {
             return {
                 success: true,
                 user: {
@@ -62,10 +80,37 @@ export default function Login() {
                 },
                 token: 'demo-client-token-456'
             }
-        } else {
+        }
+        else if (email === 'client@xyz-industries.com' && password === 'client456') {
+            return {
+                success: true,
+                user: {
+                    id: '3',
+                    email: email,
+                    role: 'client',
+                    name: 'XYZ Industries User',
+                    clientId: 'xyz-industries'
+                },
+                token: 'demo-client-token-789'
+            }
+        }
+        else if (email === 'user@testcompany.com' && password === 'test123') {
+            return {
+                success: true,
+                user: {
+                    id: '4',
+                    email: email,
+                    role: 'client',
+                    name: 'Test Company User',
+                    clientId: 'test-company'
+                },
+                token: 'demo-client-token-999'
+            }
+        }
+        else {
             return {
                 success: false,
-                error: 'Invalid email or password'
+                error: 'Invalid email or password. Please check your credentials.'
             }
         }
     }
@@ -79,24 +124,41 @@ export default function Login() {
             const response = await authenticateUser(email, password)
 
             if (response.success) {
-                // Store user info for the session
-                localStorage.setItem('userRole', response.user.role)
-                localStorage.setItem('userId', response.user.id)
-                localStorage.setItem('userEmail', response.user.email)
-                localStorage.setItem('userName', response.user.name)
-                localStorage.setItem('clientId', response.user.clientId || '')
-                localStorage.setItem('authToken', response.token)
-
-                // Redirect based on role
-                if (response.user.role === 'admin') {
-                    router.push('/client') // Admin goes to client dashboard with extra control panel
-                } else if (response.user.role === 'client') {
-                    router.push('/client')
+                // Store user info in session storage (more reliable than localStorage for artifacts)
+                if (typeof window !== 'undefined') {
+                    try {
+                        sessionStorage.setItem('userRole', response.user.role)
+                        sessionStorage.setItem('userId', response.user.id)
+                        sessionStorage.setItem('userEmail', response.user.email)
+                        sessionStorage.setItem('userName', response.user.name)
+                        sessionStorage.setItem('clientId', response.user.clientId || '')
+                        sessionStorage.setItem('authToken', response.token)
+                        sessionStorage.setItem('isAuthenticated', 'true')
+                    } catch (storageError) {
+                        console.warn('Session storage not available, using in-memory auth')
+                        // Fallback: store in a global variable for the session
+                        ;(window as any).__authState = {
+                            userRole: response.user.role,
+                            userId: response.user.id,
+                            userEmail: response.user.email,
+                            userName: response.user.name,
+                            clientId: response.user.clientId || '',
+                            authToken: response.token,
+                            isAuthenticated: true
+                        }
+                    }
                 }
+
+                // Redirect to main dashboard regardless of role
+                // Role-based content will be handled in the main dashboard
+                router.push('/main')
+
             } else {
+                // Type-safe error handling
                 setError(response.error || 'Login failed')
             }
         } catch (err) {
+            console.error('Login error:', err)
             setError('Login failed. Please try again.')
         }
 
@@ -114,6 +176,10 @@ export default function Login() {
                                 src="/logo.png"
                                 alt="Company Logo"
                                 className="h-20 w-auto mx-auto"
+                                onError={(e) => {
+                                    // Fallback if logo doesn't exist
+                                    (e.target as HTMLImageElement).style.display = 'none'
+                                }}
                             />
                         </div>
                         <h2 className="text-3xl font-bold text-gray-900">Energy Dashboard</h2>
@@ -125,7 +191,10 @@ export default function Login() {
                         {/* Error Message */}
                         {error && (
                             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
-                                {error}
+                                <div className="flex items-center">
+                                    <div className="w-2 h-2 bg-red-500 rounded-full mr-2"></div>
+                                    {error}
+                                </div>
                             </div>
                         )}
 
@@ -142,6 +211,7 @@ export default function Login() {
                                 placeholder="Enter your email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                autoComplete="email"
                             />
                         </div>
 
@@ -158,6 +228,7 @@ export default function Login() {
                                 placeholder="Enter your password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                autoComplete="current-password"
                             />
                         </div>
 
@@ -180,11 +251,31 @@ export default function Login() {
 
                     {/* Demo Credentials */}
                     <div className="mt-6 text-center">
-                        <div className="text-xs text-gray-500 space-y-1">
-                            <p><strong>Demo Accounts:</strong></p>
-                            <p>Admin: admin@energydash.com / admin123</p>
-                            <p>Client: client@abc-corp.com / client123</p>
+                        <div className="bg-gray-50 rounded-lg p-4">
+                            <div className="text-xs text-gray-600 space-y-2">
+                                <p className="font-medium text-gray-700">Demo Accounts:</p>
+
+                                <div className="border-t pt-2">
+                                    <p className="font-medium text-blue-600">Admin Accounts (Full Access + Database Testing):</p>
+                                    <p className="font-mono">admin@energydash.com / admin123</p>
+                                    <p className="font-mono">admin@company.com / admin456</p>
+                                </div>
+
+                                <div className="border-t pt-2">
+                                    <p className="font-medium text-green-600">Client Accounts (Energy Dashboard Only):</p>
+                                    <p className="font-mono">client@abc-corp.com / client123</p>
+                                    <p className="font-mono">client@xyz-industries.com / client456</p>
+                                    <p className="font-mono">user@testcompany.com / test123</p>
+                                </div>
+                            </div>
                         </div>
+                    </div>
+
+                    {/* System Info */}
+                    <div className="mt-4 text-center">
+                        <p className="text-xs text-gray-400">
+                            Energy Management System v1.0.0
+                        </p>
                     </div>
                 </div>
             </div>
